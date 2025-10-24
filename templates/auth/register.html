@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Daftar · Tumbuh.in{% endblock %}
+
+{% block header_actions %}{% endblock %}
+
+{% block content %}
+<div class="auth-page">
+    <section class="auth-card">
+        <header class="auth-card__header">
+            <h1>Buat Akun Baru</h1>
+            <p>Daftar untuk menyimpan hasil analisis dan melanjutkan pekerjaan kapan saja.</p>
+        </header>
+        <form method="post" class="auth-form">
+            {% csrf_token %}
+            {% if form.non_field_errors %}
+            <div class="auth-errors">
+                {% for error in form.non_field_errors %}
+                <p>{{ error }}</p>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% for field in form %}
+            <div class="auth-field">
+                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% if field.errors %}
+                <span class="auth-field__error">{{ field.errors.0 }}</span>
+                {% endif %}
+            </div>
+            {% endfor %}
+            <button type="submit" class="btn btn--accent auth-submit">Daftar</button>
+        </form>
+        <p class="auth-switch">Sudah punya akun? <a href="{% url 'agro:login' %}">Masuk di sini</a>.</p>
+    </section>
+</div>
+{% endblock %}

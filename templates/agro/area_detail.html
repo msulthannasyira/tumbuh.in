@@ -1,0 +1,520 @@
+{% extends "base.html" %}
+{% block title %}Hasil Area · {{ area.name|default:"Tanpa Nama" }}{% endblock %}
+
+{% block header_actions %}
+<div class="header-actions">
+    <a class="btn btn--accent" href="{% url 'agro:dashboard' %}">Analisis Baru</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="insight">
+    <section class="insight-hero">
+        <div class="insight-hero__primary">
+            <h1>{{ area.name|default:"Tanpa Nama" }}</h1>
+            <p>UID {{ area.id }}</p>
+            <div class="insight-badges">
+                <span class="status-badge status-badge--{{ area.status }}">{{ status_label }}</span>
+                <span class="insight-chip">Dibuat {{ area.created_at|date:"d M Y H:i" }}</span>
+                <span class="insight-chip">Diperbarui {{ area.updated_at|date:"d M Y H:i" }}</span>
+            </div>
+            {% if top_primary %}
+            <div class="insight-highlight" style="--accent: {{ top_primary.color }};">
+                <span class="insight-highlight__label">Tanaman Dominan</span>
+                <div class="insight-highlight__value">{{ top_primary.plant }}</div>
+                <div class="insight-highlight__meta">
+                    <span>{{ top_primary.share|floatformat:1 }}% area</span>
+                    <span>Rata-rata {{ top_primary.avg_confidence|floatformat:1 }}% confidence</span>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        <div class="insight-hero__stats">
+            <div class="insight-stat">
+                <span>Jumlah Tile</span>
+                <strong>{{ tile_count }}</strong>
+            </div>
+            <div class="insight-stat">
+                <span>Durasi Proses</span>
+                <strong>{{ processing_seconds|floatformat:1 }} dtk</strong>
+            </div>
+            {% if top_primary %}
+            <div class="insight-stat insight-stat--accent" style="--accent: {{ top_primary.color }};">
+                <span>Kontribusi Dominan</span>
+                <strong>{{ top_primary.share|floatformat:1 }}%</strong>
+            </div>
+            {% endif %}
+        </div>
+    </section>
+
+    <section class="insight-grid">
+    <article class="insight-card insight-card--compact">
+            <header class="insight-card__header">
+                <div class="insight-card__title">
+                    <h2>Tanaman Teratas</h2>
+                    <button class="icon-button" type="button" data-top-modal>
+                        <span>?</span>
+                    </button>
+                </div>
+                <p>Rekomendasi AI berdasarkan tile yang paling sering muncul.</p>
+            </header>
+            {% if top_crops %}
+            <ol class="insight-list">
+                {% for crop in top_crops %}
+                <li class="insight-list__row" style="--accent: {{ crop.color }}; --share: {{ crop.share|floatformat:2 }};">
+                    <div class="insight-list__primary">
+                        <span class="insight-list__dot"></span>
+                        <span class="insight-top__title">{{ forloop.counter }}. {{ crop.plant }}</span>
+                    </div>
+                    <div class="insight-list__values">
+                        <span class="insight-top__share">{{ crop.share|floatformat:1 }}%</span>
+                    </div>
+                    <div class="insight-top__bar"><span></span></div>
+                </li>
+                {% endfor %}
+            </ol>
+            {% else %}
+            <p class="insight-empty">Belum ada rekomendasi tanaman.</p>
+            {% endif %}
+        </article>
+        <article class="insight-card">
+            <header class="insight-card__header">
+                <h2>Ringkasan Lingkungan</h2>
+                <p>Nilai ini dihitung dengan menjumlahkan semua nilai parameter yang diukur dalam setiap segmen (tile) area yang telah ditentukan, kemudian membagi jumlah tersebut dengan total banyaknya tile yang ada. </p>
+            </header>
+            {% if env_items %}
+            <div class="insight-env-grid">
+                {% for item in env_items %}
+                <div class="insight-env__card">
+                    <span class="insight-env__icon" data-badge="{{ item.badge }}"></span>
+                    <div>
+                        <h3>{{ item.label }}</h3>
+                        <p>{{ item.value }}</p>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="insight-empty">Belum ada ringkasan lingkungan.</p>
+            {% endif %}
+        </article>
+    </section>
+
+    {% if dashboard_metrics %}
+    <section class="hyperlocal-dashboard" aria-label="Ringkasan Hyperlokal">
+        <div class="hyperlocal-dashboard__grid">
+            {% for metric in dashboard_metrics %}
+            <article class="hyperlocal-metric">
+                <p class="hyperlocal-metric__label">{{ metric.label }}</p>
+                <div class="hyperlocal-metric__value">
+                    <span>{{ metric.value }}</span>
+                    {% if metric.unit %}<span class="hyperlocal-metric__unit">{{ metric.unit }}</span>{% endif %}
+                </div>
+                {% if metric.subtitle %}<p class="hyperlocal-metric__subtitle">{{ metric.subtitle }}</p>{% endif %}
+            </article>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    <section class="insight-card insight-card--stack" data-hyperlocal data-hyperlocal-generated="{{ hyperlocal_generated|default_if_none:'' }}">
+        <header class="insight-card__header insight-card__header--action">
+            <div>
+                <h2>Hyperlokal Insight</h2>
+                <p>Ringkasan agronomi aktual yang diambil lewat Gemini Grounding dari sumber resmi seperti BMKG, BNPB, Kementan, FAO, dan lembaga terkait lainnya.</p>
+            </div>
+            <div class="insight-card__actions">
+                <span class="insight-chip" data-hyperlocal-timestamp>
+                    {% if hyperlocal_generated_display %}
+                        Diperbarui {{ hyperlocal_generated_display|date:"d M Y H:i" }}
+                    {% else %}
+                        Belum diperbarui
+                    {% endif %}
+                </span>
+                <button type="button" class="btn btn--ghost" data-hyperlocal-refresh data-url="{% url 'agro:area-hyperlocal' area.id %}">
+                    Muat Ulang Insight
+                </button>
+            </div>
+        </header>
+        <p class="insight-help">Koordinat acuan berasal dari batas terluar polygon area.</p>
+        {% with crop_list=hyperlocal_context.primary_crops %}
+        <p class="insight-chip" data-hyperlocal-focus{% if not crop_list %} hidden{% endif %}>Fokus komoditas: {% if crop_list %}{{ crop_list|join:", " }}{% else %}-{% endif %}</p>
+        {% endwith %}
+        <p class="insight-alert" data-hyperlocal-error hidden></p>
+        <ul class="hyperlocal-list" data-hyperlocal-list>
+            {% if hyperlocal_items %}
+                {% for item in hyperlocal_items %}
+                <li class="hyperlocal-item">
+                    <h3>{{ item.title }}</h3>
+                    <p>{{ item.summary }}</p>
+                    <a href="{{ item.source_url }}" target="_blank" rel="noopener noreferrer">{{ item.source_name }}</a>
+                </li>
+                {% endfor %}
+            {% else %}
+                <li class="insight-empty">Belum ada insight hyperlokal. Tekan tombol muat ulang untuk mengambil data terbaru.</li>
+            {% endif %}
+        </ul>
+    </section>
+
+    <section class="insight-table-wrapper">
+        <header class="insight-table__header">
+            <div>
+                <h2>Detail Tile</h2>
+                <p>Menampilkan variabel geospasial dan rekomendasi tanaman untuk setiap tile.</p>
+            </div>
+        </header>
+        <section class="insight-map">
+            <div class="insight-map__header">
+                <h3>Visualisasi Peta Tile</h3>
+                <p>Setiap tile diwarnai berdasarkan rekomendasi tanaman teratas.</p>
+            </div>
+            <div id="insight-map" class="insight-map__canvas"></div>
+            {% if legend_items %}
+            <div class="insight-map__legend">
+                {% for item in legend_items %}
+                <span class="insight-map__chip" style="--legend-color: {{ item.color }};">
+                    <span class="insight-map__dot"></span>
+                    {{ item.plant }}
+                </span>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </section>
+        <div class="table-wrapper">
+            <table class="insight-table">
+                <thead>
+                    <tr>
+                        <th>Tile</th>
+                        <th>Lat</th>
+                        <th>Lon</th>
+                        <th>Curah Hujan (mm)</th>
+                        <th>Suhu (°C)</th>
+                        <th>pH</th>
+                        <th>Tekstur Tanah</th>
+                        <th>Elevasi (m)</th>
+                        <th>NDVI</th>
+                        <th>NDWI</th>
+                        <th>Tanaman Top 5</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if tile_page.object_list %}
+                        {% for row in tile_page %}
+                        {% with tile_index=forloop.counter0 %}
+                        <tr>
+                            <td>{{ row.index }}</td>
+                            <td>{{ row.lat }}</td>
+                            <td>{{ row.lon }}</td>
+                            <td>{{ row.precip }}</td>
+                            <td>{{ row.temperature }}</td>
+                            <td>{{ row.ph }}</td>
+                            <td>{{ row.texture }}</td>
+                            <td>{{ row.elevation }}</td>
+                            <td>{{ row.ndvi }}</td>
+                            <td>{{ row.ndwi }}</td>
+                            <td class="insight-rec-cell">
+                                {% if row.recommendations %}
+                                <div class="insight-rec-cell__row">
+                                    <ul class="insight-rec-list insight-rec-list--compact">
+                                        {% for rec in row.recommendations %}
+                                        <li>
+                                            <span class="insight-rec-list__main">{{ rec.rank }}. {{ rec.plant }}</span>
+                                            {% if rec.confidence is not None %}<span class="insight-rec-list__percent">{{ rec.confidence|floatformat:1 }}%</span>{% endif %}
+                                        </li>
+                                        {% endfor %}
+                                    </ul>
+                                    <button type="button" class="icon-button icon-button--ghost" data-rec-trigger="rec-detail-{{ tile_index }}" aria-label="Detail rekomendasi tile"><span>?</span></button>
+                                </div>
+                                <template id="rec-detail-{{ tile_index }}">
+                                    <div class="insight-modal__section">
+                                        <h3>Tile {{ row.index }}</h3>
+                                        <ul class="insight-rec-modal-list">
+                                            {% for rec in row.recommendations %}
+                                            <li>
+                                                <div>
+                                                    <strong>{{ rec.rank }}. {{ rec.plant }}</strong>
+                                                    {% if rec.rationale %}<p>{{ rec.rationale }}</p>{% endif %}
+                                                </div>
+                                                {% if rec.confidence is not None %}<span>{{ rec.confidence|floatformat:1 }}%</span>{% endif %}
+                                            </li>
+                                            {% endfor %}
+                                        </ul>
+                                    </div>
+                                </template>
+                                {% else %}
+                                <span>—</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endwith %}
+                        {% endfor %}
+                    {% else %}
+                        <tr><td colspan="11" class="insight-empty">Belum ada tile yang direkam.</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+        {% if tile_page.paginator.num_pages > 1 %}
+        <div class="insight-pagination">
+            {% if tile_page.has_previous %}
+            <a class="insight-pagination__link" href="?page={{ tile_page.previous_page_number }}">Sebelumnya</a>
+            {% endif %}
+            <span class="insight-pagination__status">Halaman {{ tile_page.number }} dari {{ tile_page.paginator.num_pages }}</span>
+            {% if tile_page.has_next %}
+            <a class="insight-pagination__link" href="?page={{ tile_page.next_page_number }}">Berikutnya</a>
+            {% endif %}
+        </div>
+        {% endif %}
+    </section>
+</div>
+
+<div class="modal" id="rec-modal" hidden>
+        <div class="modal__content">
+                <button class="modal__close" data-close-modal>&times;</button>
+                <div class="modal__body" data-modal-body></div>
+        </div>
+</div>
+
+<div class="modal" id="top-modal" hidden>
+    <div class="modal__content">
+        <button class="modal__close" data-close-modal>&times;</button>
+        <div class="modal__body">
+            <h3>Detail Tanaman Teratas</h3>
+            {% if top_crops %}
+            <ul class="insight-rec-modal-list insight-rec-modal-list--summary">
+                {% for crop in top_crops %}
+                <li style="--accent: {{ crop.color }};">
+                    <div class="insight-rec-modal-list__primary">
+                        <span class="insight-map__dot"></span>
+                        <div>
+                            <strong>{{ crop.plant }}</strong>
+                            <p>{{ crop.tiles }} tile dianalisis</p>
+                        </div>
+                    </div>
+                    <span>{{ crop.avg_confidence|floatformat:1 }}% • {{ crop.share|floatformat:1 }}%</span>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="insight-empty">Belum ada data.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{{ tile_features|json_script:"tile-data" }}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const recModal = document.getElementById('rec-modal');
+    const topModal = document.getElementById('top-modal');
+    const recBody = recModal?.querySelector('[data-modal-body]');
+
+    const closeModal = (modal) => {
+        if (!modal) return;
+        modal.hidden = true;
+        const body = modal.querySelector('[data-modal-body]');
+        if (body) body.innerHTML = '';
+    };
+
+    document.querySelectorAll('[data-rec-trigger]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const targetId = button.getAttribute('data-rec-trigger');
+            const template = document.getElementById(targetId);
+            if (!template || !recModal || !recBody) return;
+            recBody.innerHTML = template.innerHTML;
+            recModal.hidden = false;
+        });
+    });
+
+    document.querySelectorAll('[data-top-modal]').forEach((button) => {
+        button.addEventListener('click', () => {
+            if (!topModal) return;
+            topModal.hidden = false;
+        });
+    });
+
+    [recModal, topModal].forEach((modal) => {
+        if (!modal) return;
+        modal.addEventListener('click', (event) => {
+            if (event.target === modal || event.target.hasAttribute('data-close-modal')) {
+                closeModal(modal);
+            }
+        });
+    });
+
+        const tileDataNode = document.getElementById('tile-data');
+        const mapContainer = document.getElementById('insight-map');
+        if (tileDataNode && mapContainer && window.L) {
+            const tileData = JSON.parse(tileDataNode.textContent || '[]');
+            if (tileData.length) {
+                const fallbackPalette = ['#88c34e', '#73cf7b', '#96d990', '#5b7b45', '#bedf9d', '#d7f1c0', '#4b6d33'];
+                const fallbackMap = new Map();
+                const fallbackColor = (key) => {
+                    const label = key || 'Tidak diketahui';
+                    if (!fallbackMap.has(label)) {
+                        fallbackMap.set(label, fallbackPalette[fallbackMap.size % fallbackPalette.length]);
+                    }
+                    return fallbackMap.get(label);
+                };
+
+                const map = L.map('insight-map', {
+                    scrollWheelZoom: false,
+                    attributionControl: false,
+                });
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 18,
+                }).addTo(map);
+
+                const features = tileData
+                    .filter((tile) => tile.geometry && tile.geometry.type === 'Polygon')
+                    .map((tile) => ({
+                        type: 'Feature',
+                        geometry: tile.geometry,
+                        properties: {
+                            index: tile.index,
+                            plant: tile.top?.plant || 'Tidak diketahui',
+                            confidence: tile.top?.confidence,
+                            color: tile.color || fallbackColor(tile.top?.plant),
+                        },
+                    }));
+
+                if (features.length) {
+                    const geoLayer = L.geoJSON(features, {
+                        style: (feature) => ({
+                            color: feature.properties.color,
+                            fillColor: feature.properties.color,
+                            weight: 1,
+                            fillOpacity: 0.6,
+                        }),
+                        onEachFeature: (feature, layer) => {
+                            const confidence = feature.properties.confidence;
+                            const confidenceText = typeof confidence === 'number' ? `${confidence.toFixed(1)}%` : '—';
+                            layer.bindTooltip(
+                                `Tile ${feature.properties.index}<br>Tanaman: <strong>${feature.properties.plant}</strong><br>Confidence: ${confidenceText}`,
+                                { sticky: true }
+                            );
+                        },
+                    }).addTo(map);
+                    map.fitBounds(geoLayer.getBounds(), { padding: [12, 12] });
+                } else {
+                    map.setView([0, 0], 2);
+                }
+            }
+        }
+
+        const hyperlocalRoot = document.querySelector('[data-hyperlocal]');
+        if (hyperlocalRoot) {
+            const listNode = hyperlocalRoot.querySelector('[data-hyperlocal-list]');
+            const timestampNode = hyperlocalRoot.querySelector('[data-hyperlocal-timestamp]');
+            const refreshButton = hyperlocalRoot.querySelector('[data-hyperlocal-refresh]');
+            const errorNode = hyperlocalRoot.querySelector('[data-hyperlocal-error]');
+            const focusNode = hyperlocalRoot.querySelector('[data-hyperlocal-focus]');
+            const defaultLabel = refreshButton?.textContent?.trim() || 'Muat Ulang Insight';
+
+            const formatLocal = (iso) => {
+                if (!iso) return 'Belum diperbarui';
+                const date = new Date(iso);
+                if (Number.isNaN(date.getTime())) return 'Belum diperbarui';
+                return new Intl.DateTimeFormat('id-ID', {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                }).format(date);
+            };
+
+            const updateTimestamp = (iso, display) => {
+                if (!timestampNode) return;
+                if (display) {
+                    timestampNode.textContent = `Diperbarui ${display}`;
+                } else if (iso) {
+                    timestampNode.textContent = `Diperbarui ${formatLocal(iso)}`;
+                } else {
+                    timestampNode.textContent = 'Belum diperbarui';
+                }
+            };
+
+            const renderItems = (items) => {
+                if (!listNode) return;
+                listNode.innerHTML = '';
+                if (!items || !items.length) {
+                    const empty = document.createElement('li');
+                    empty.className = 'insight-empty';
+                    empty.textContent = 'Belum ada insight hyperlokal untuk area ini.';
+                    listNode.appendChild(empty);
+                    return;
+                }
+                items.forEach((item = {}) => {
+                    const li = document.createElement('li');
+                    li.className = 'hyperlocal-item';
+
+                    const title = document.createElement('h3');
+                    title.textContent = item.title || 'Insight';
+
+                    const summary = document.createElement('p');
+                    summary.textContent = item.summary || '';
+
+                    const link = document.createElement('a');
+                    link.href = item.source_url || '#';
+                    link.textContent = item.source_name || 'Sumber';
+                    link.target = '_blank';
+                    link.rel = 'noopener noreferrer';
+
+                    li.append(title, summary, link);
+                    listNode.appendChild(li);
+                });
+            };
+
+            const setLoadingState = (isLoading) => {
+                if (!refreshButton) return;
+                refreshButton.disabled = isLoading;
+                refreshButton.textContent = isLoading ? 'Memuat...' : defaultLabel;
+            };
+
+            if (refreshButton) {
+                refreshButton.addEventListener('click', async () => {
+                    if (!refreshButton.dataset.url) return;
+                    setLoadingState(true);
+                    if (errorNode) {
+                        errorNode.hidden = true;
+                        errorNode.textContent = '';
+                    }
+                    try {
+                        const response = await fetch(refreshButton.dataset.url, {
+                            headers: { 'Accept': 'application/json' },
+                        });
+                        if (!response.ok) {
+                            throw new Error('Gagal memuat insight hyperlokal.');
+                        }
+                        const payload = await response.json();
+                        if (payload.status !== 'success') {
+                            throw new Error(payload.message || 'Gagal memuat insight hyperlokal.');
+                        }
+                        renderItems(payload.items || []);
+                        hyperlocalRoot.dataset.hyperlocalGenerated = payload.generated_at || '';
+                        updateTimestamp(payload.generated_at, payload.generated_at_display);
+
+                        if (focusNode) {
+                            const crops = payload.context?.primary_crops || [];
+                            if (Array.isArray(crops) && crops.length) {
+                                focusNode.textContent = `Fokus komoditas: ${crops.join(', ')}`;
+                                focusNode.hidden = false;
+                            } else {
+                                focusNode.hidden = true;
+                            }
+                        }
+                    } catch (error) {
+                        if (errorNode) {
+                            errorNode.textContent = error.message || 'Terjadi kesalahan saat memuat data.';
+                            errorNode.hidden = false;
+                        }
+                    } finally {
+                        setLoadingState(false);
+                    }
+                });
+            }
+        }
+});
+</script>
+{% endblock %}

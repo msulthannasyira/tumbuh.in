@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Tumbuh.in{% endblock %}
+
+{% block header_actions %}
+<div class="header-actions">
+    <span class="status-pill" data-status-label>Siap memulai</span>
+</div>
+{% endblock %}
+
+{% block content %}
+<section class="workspace">
+    <aside class="panel panel--primary">
+        <h2>1. Gambar Area</h2>
+        <p>Pilih region pada peta menggunakan alat polygon, kemudian klik <strong>Proses Area</strong>.</p>
+        <form id="area-form" class="area-form">
+            <label for="area-name">Nama Area (opsional)</label>
+            <input type="text" id="area-name" name="name" placeholder="Contoh: Lahan Subang A">
+            <label for="tile-size">Ukuran Tile (meter)</label>
+            <input type="number" id="tile-size" name="tile_size" value="15" min="5" max="100" step="5">
+            <p class="area-form__hint">Atur resolusi grid sebelum pemrosesan. Nilai lebih kecil = detail lebih tinggi.</p>
+            <button id="analyzeButton" type="submit" class="btn btn--accent" disabled>Proses Area</button>
+        </form>
+        <div class="panel__info">
+            <h3>Langkah Kerja</h3>
+            <ol>
+                <li>Gambar polygon pada peta.</li>
+                <li>Tentukan ukuran tile (5–100 m) sesuai kebutuhan detail.</li>
+                <li>Sistem mengumpulkan variabel dan menilai tiap tile.</li>
+                <li>AI memberikan top 5 tanaman untuk tiap tile.</li>
+                <li>Lihat visualisasi dan tabel detail di bawah.</li>
+            </ol>
+        </div>
+    </aside>
+    <section class="map-area">
+        <div id="map"></div>
+        <div class="legend" id="legend">
+            <h3>Legenda Tanaman Unggulan</h3>
+            <ul data-legend-list></ul>
+        </div>
+    </section>
+</section>
+
+<section class="results" id="results" hidden>
+    <header class="results__header">
+        <div>
+            <h2>Ringkasan Area</h2>
+            <p id="area-summary"></p>
+        </div>
+        <div class="chip-group">
+            <span class="chip" id="tile-count">0 Tiles</span>
+            <span class="chip chip--accent" id="processing-time">Waktu proses: -</span>
+        </div>
+    </header>
+    <div class="results__grid">
+        <article class="result-card" id="top-crops">
+            <h3>Tanaman Dominan</h3>
+            <ul data-dominant-list></ul>
+        </article>
+        <article class="result-card" id="climate-stats">
+            <h3>Statistik Lingkungan</h3>
+            <div class="stat-grid" data-stat-grid></div>
+        </article>
+    </div>
+    <div class="table-wrapper">
+        <table id="tiles-table">
+            <thead>
+                <tr>
+                    <th>Tile</th>
+                    <th>Lat</th>
+                    <th>Lon</th>
+                    <th>Curah Hujan (mm)</th>
+                    <th>Suhu (°C)</th>
+                    <th>pH</th>
+                    <th>Tekstur Tanah</th>
+                    <th>Elevasi (m)</th>
+                    <th>NDVI</th>
+                    <th>NDWI</th>
+                    <th>Tanaman Top 5</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</section>
+
+<div class="modal" id="tile-modal" hidden>
+    <div class="modal__content">
+        <button class="modal__close" data-close-modal>&times;</button>
+        <div id="modal-body"></div>
+    </div>
+</div>
+{% endblock %}

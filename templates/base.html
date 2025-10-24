@@ -1,0 +1,66 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Tumbuh.in{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/svg+xml" href="{% static 'img/favicon.svg' %}">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" referrerpolicy="no-referrer">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css">
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <div class="app-shell">
+        <header class="app-header">
+            <div class="brand">
+                <span class="brand-mark">🌱</span>
+                <div>
+                    <h1>Tumbuh.in</h1>
+                    <p>Visualisasi Potensi Tanaman Berbasis Variabel Geospasial</p>
+                </div>
+            </div>
+            {% with request.resolver_match.url_name as current_route %}
+            <nav class="app-nav">
+                <a class="app-nav__link {% if current_route == 'landing' %}is-active{% endif %}" href="{% url 'agro:landing' %}">Beranda</a>
+                {% if request.user.is_authenticated %}
+                <a class="app-nav__link {% if current_route == 'dashboard' %}is-active{% endif %}" href="{% url 'agro:dashboard' %}">Dashboard</a>
+                {% else %}
+                <a class="app-nav__link" href="{% url 'agro:login' %}?next={% url 'agro:dashboard' %}">Dashboard</a>
+                {% endif %}
+            </nav>
+            {% endwith %}
+            <div class="header-controls">
+                {% if request.user.is_authenticated %}
+                <div class="header-account">
+                    <span class="header-user">Hai, {{ request.user.first_name|default:request.user.username }}</span>
+                    <a class="header-auth header-auth--primary" href="{% url 'agro:logout' %}">Keluar</a>
+                </div>
+                {% else %}
+                <div class="header-account">
+                    <a class="header-auth header-auth--primary" href="{% url 'agro:login' %}">Masuk</a>
+                    <a class="header-auth header-auth--ghost" href="{% url 'agro:register' %}">Daftar</a>
+                </div>
+                {% endif %}
+                {% block header_actions %}{% endblock %}
+            </div>
+        </header>
+        <main class="app-main">
+            {% block content %}{% endblock %}
+        </main>
+        <footer class="app-footer">
+            <p>&copy; {{ now|date:'Y' }} Tumbuh.in. Data sumber: Google Earth Engine, AI dengan Google Grounding, OSM.</p>
+        </footer>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="" referrerpolicy="no-referrer"></script>
+    <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.7.7/dist/axios.min.js"></script>
+    <script src="{% static 'js/app.js' %}"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

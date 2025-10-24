@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Masuk · Tumbuh.in{% endblock %}
+
+{% block header_actions %}{% endblock %}
+
+{% block content %}
+<div class="auth-page">
+    <section class="auth-card">
+        <header class="auth-card__header">
+            <h1>Masuk ke Tumbuh</h1>
+            <p>Akses dashboard untuk memulai analisis geospasial Anda.</p>
+        </header>
+        <form method="post" class="auth-form">
+            {% csrf_token %}
+            {% if form.non_field_errors %}
+            <div class="auth-errors">
+                {% for error in form.non_field_errors %}
+                <p>{{ error }}</p>
+                {% endfor %}
+            </div>
+            {% endif %}
+            <div class="auth-field">
+                <label for="{{ form.username.id_for_label }}">Username</label>
+                {{ form.username }}
+                {% if form.username.errors %}
+                <span class="auth-field__error">{{ form.username.errors.0 }}</span>
+                {% endif %}
+            </div>
+            <div class="auth-field">
+                <label for="{{ form.password.id_for_label }}">Password</label>
+                {{ form.password }}
+                {% if form.password.errors %}
+                <span class="auth-field__error">{{ form.password.errors.0 }}</span>
+                {% endif %}
+            </div>
+            <button type="submit" class="btn btn--accent auth-submit">Masuk</button>
+        </form>
+        <p class="auth-switch">Belum punya akun? <a href="{% url 'agro:register' %}">Daftar sekarang</a>.</p>
+    </section>
+</div>
+{% endblock %}

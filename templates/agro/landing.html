@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}Beranda · Tumbuh.in{% endblock %}
+
+{% block header_actions %}
+<div class="header-actions">
+    <a class="btn btn--accent" href="{% url 'agro:dashboard' %}">Mulai Analisis</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="landing">
+    <section class="landing-hero">
+        <div class="landing-hero__copy">
+            <h1>Pantau Potensi Tanaman Secara Real-time</h1>
+            <p>
+                Tumbuh.in terus memperbarui rekomendasi berdasarkan variabel geospasial terkini.
+                Sistem ini telah memonitor <strong>{{ stats.total_areas }}</strong> area dan
+                <strong>{{ stats.total_tiles }}</strong> tile hingga saat ini.
+            </p>
+            <div class="landing-hero__insights">
+                <div class="hero-pill">
+                    <span>Rata-rata Tile per Area</span>
+                    <strong>{{ stats.avg_tiles_per_area|floatformat:1 }}</strong>
+                </div>
+                <div class="hero-pill">
+                    <span>Tile Enriched</span>
+                    <strong>{{ stats.enriched_tiles }}</strong>
+                </div>
+                <div class="hero-pill">
+                    <span>Area Aktif</span>
+                    <strong>{{ stats.active_areas }}</strong>
+                </div>
+            </div>
+            <div class="landing-hero__cta">
+                <a class="btn btn--accent" href="{% if request.user.is_authenticated %}{% url 'agro:dashboard' %}{% else %}{% url 'agro:login' %}?next={% url 'agro:dashboard' %}{% endif %}">Lanjut ke Dashboard</a>
+            </div>
+        </div>
+        <div class="landing-hero__metrics">
+            <div class="hero-metric">
+                <span>Area Dipantau Hari Ini</span>
+                <strong>{{ stats.areas_today }}</strong>
+            </div>
+            <div class="hero-metric">
+                <span>Waktu Proses Rata-rata</span>
+                <strong>{{ stats.avg_processing|floatformat:1 }}</strong>
+                <small>detik</small>
+            </div>
+            {% if latest_area %}
+            <div class="hero-metric hero-metric--highlight">
+                <span>Area Terbaru</span>
+                <strong>{{ latest_area.name|default:"Tanpa Nama" }}</strong>
+                <small>{{ latest_area.created_at|date:"d M Y H:i" }}</small>
+            </div>
+            {% endif %}
+        </div>
+    </section>
+
+    <section class="landing-status">
+        <header class="landing-status__header">
+            <div>
+                <h2>Snapshot Status Area</h2>
+                <p>Distribusi status area terakhir yang dipantau secara otomatis.</p>
+            </div>
+        </header>
+        {% if status_summary %}
+        <div class="status-grid">
+            {% for item in status_summary %}
+            <article class="status-card">
+                <div class="status-card__header">
+                    <span class="status-card__label">{{ item.label }}</span>
+                    <strong>{{ item.total }}</strong>
+                </div>
+                <div class="status-card__bar">
+                    <span class="status-card__fill" style="--percent: {{ item.percent|floatformat:2 }};"></span>
+                </div>
+                <p class="status-card__percent">{{ item.percent|floatformat:1 }}%</p>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="landing-empty">Belum ada area untuk ditampilkan.</p>
+        {% endif %}
+    </section>
+
+    <section class="landing-metrics">
+        <article class="metric-card">
+            <span>Total Area Terekam</span>
+            <strong>{{ stats.total_areas }}</strong>
+            <small>Mencakup semua area yang pernah diproses.</small>
+        </article>
+        <article class="metric-card">
+            <span>Tile Teranalisis</span>
+            <strong>{{ stats.total_tiles }}</strong>
+            <small>Jumlah tile hasil pemetaan polygon pengguna.</small>
+        </article>
+        <article class="metric-card">
+            <span>Tile Enriched</span>
+            <strong>{{ stats.enriched_tiles }}</strong>
+            <small>Diperbarui dengan rekomendasi AI terbaru.</small>
+        </article>
+        <article class="metric-card">
+            <span>Area Aktif</span>
+            <strong>{{ stats.active_areas }}</strong>
+            <small>Area dengan status selain gagal.</small>
+        </article>
+    </section>
+
+    <section class="landing-intel">
+        <article class="intel-card">
+            <header>
+                <h2>Tanaman Rekomendasi Teratas</h2>
+                <p>Ranking diambil dari rekomendasi pertama AI pada setiap tile.</p>
+            </header>
+            {% if top_crops %}
+            <ol class="intel-list">
+                {% for crop in top_crops %}
+                <li>
+                    <div class="intel-list__info">
+                        <strong>{{ forloop.counter }}. {{ crop.plant }}</strong>
+                        <span>{{ crop.count }} tile</span>
+                    </div>
+                    <div class="intel-progress">
+                        <span class="intel-progress__fill" style="--percent: {{ crop.share|floatformat:2 }};"></span>
+                        <em>{{ crop.share|floatformat:1 }}%</em>
+                    </div>
+                </li>
+                {% endfor %}
+            </ol>
+            {% else %}
+            <p class="landing-empty">Belum ada rekomendasi tanaman yang tercatat.</p>
+            {% endif %}
+        </article>
+        <article class="intel-card">
+            <header>
+                <h2>Tren Area 7 Hari</h2>
+                <p>Jumlah area baru yang diproses setiap hari.</p>
+            </header>
+            <div class="trend-grid">
+                {% for point in processing_trend %}
+                <div class="trend-item">
+                    <span class="trend-item__day">{{ point.day|date:"d M" }}</span>
+                    <strong>{{ point.total }}</strong>
+                    <div class="trend-bar"><span class="trend-bar__fill" style="--percent: {{ point.percent|floatformat:2 }};"></span></div>
+                </div>
+                {% endfor %}
+            </div>
+        </article>
+    </section>
+
+    <section class="landing-activity">
+        <header class="landing-activity__header">
+            <div>
+                <h2>Aktivitas Terbaru</h2>
+                <p>Daftar area diperingkat berdasar waktu unggah terbaru.</p>
+            </div>
+        </header>
+        <div class="activity-list">
+            {% if recent_page and recent_page.object_list %}
+                {% for area in recent_page %}
+                <article class="activity-card">
+                    <div class="activity-card__info">
+                        <h3>{{ area.name|default:"Tanpa Nama" }}</h3>
+                        <p>UID {{ area.id }} • {{ area.created_at|date:"d M Y H:i" }}</p>
+                    </div>
+                    <div class="activity-card__meta">
+                        <span class="activity-card__label">Status</span>
+                        <strong>{{ area.get_status_display }}</strong>
+                        <span class="activity-card__label">Tile</span>
+                        <strong>{{ area.tile_total }}</strong>
+                        {% if area.processing_seconds %}
+                        <span class="activity-card__label">Durasi</span>
+                        <strong>{{ area.processing_seconds|floatformat:1 }} dtk</strong>
+                        {% endif %}
+                        {% if request.user.is_authenticated %}
+                        <a class="activity-card__cta" href="{% url 'agro:area-insight' area.id %}">Lihat hasil</a>
+                        {% else %}
+                        <a class="activity-card__cta" href="{% url 'agro:login' %}?next={% url 'agro:area-insight' area.id %}">Lihat hasil</a>
+                        {% endif %}
+                    </div>
+                </article>
+                {% endfor %}
+                <div class="pagination">
+                    {% if recent_page.has_previous %}
+                    <a class="pagination__link" href="?page={{ recent_page.previous_page_number }}">Sebelumnya</a>
+                    {% endif %}
+                    <span class="pagination__status">Halaman {{ recent_page.number }} dari {{ recent_page.paginator.num_pages }}</span>
+                    {% if recent_page.has_next %}
+                    <a class="pagination__link" href="?page={{ recent_page.next_page_number }}">Berikutnya</a>
+                    {% endif %}
+                </div>
+            {% else %}
+                <p class="landing-empty">Belum ada area yang diproses. Mulai analisis untuk melihat data di sini.</p>
+            {% endif %}
+        </div>
+    </section>
+
+    <section class="landing-cta">
+        <div class="landing-cta__card">
+            <div>
+                <h2>Mulai Analisis Lahan Anda</h2>
+                <p>Gunakan alat polygon di dashboard untuk memecah area menjadi tile (default 15×15 meter, dapat disesuaikan) dan mendapatkan rekomendasi tanaman secara langsung.</p>
+            </div>
+            <a class="btn btn--accent" href="{% if request.user.is_authenticated %}{% url 'agro:dashboard' %}{% else %}{% url 'agro:login' %}?next={% url 'agro:dashboard' %}{% endif %}">Buka Dashboard</a>
+        </div>
+    </section>
+</div>
+{% endblock %}
