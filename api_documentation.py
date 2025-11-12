@@ -25,6 +25,8 @@ from typing import Any, Dict, Iterable, List, Optional
 
 import ee
 from ee.ee_exception import EEException
+import logging
+import time
 
 _BASE_DIR = Path(__file__).resolve().parent
 _EE_INITIALIZED = False
@@ -73,6 +75,9 @@ class EarthEngineInitializationError(RuntimeError):
 
 def _now() -> str:
     return datetime.utcnow().isoformat() + "Z"
+
+
+logger = logging.getLogger(__name__)
 
 
 def _resolve_path(path: str) -> Path:
@@ -150,6 +155,7 @@ def get_climate_data(lat: float, lon: float, start_date: str, end_date: str) -> 
 
     _ensure_initialized()
     region = _geometry(lat, lon, buffer_m=5000)
+    logger.info("GEE[climate]: start ERA5-Land for lat=%s lon=%s start=%s end=%s", lat, lon, start_date, end_date)
 
     start_dt = datetime.fromisoformat(start_date)
     end_dt = datetime.fromisoformat(end_date)
@@ -171,6 +177,7 @@ def get_climate_data(lat: float, lon: float, start_date: str, end_date: str) -> 
         )
 
         size = collection.size().getInfo()
+        logger.info("GEE[climate]: found %d images in query window (attempt %d)", size, attempts)
         if size > 0:
             break
 
@@ -190,6 +197,7 @@ def get_climate_data(lat: float, lon: float, start_date: str, end_date: str) -> 
     for idx in range(max_days):
         image = ee.Image(image_list.get(idx))
         date_str = image.date().format("YYYY-MM-dd").getInfo()
+        logger.debug("GEE[climate]: processing image %d date=%s", idx, date_str)
         reduced = image.reduceRegion(
             reducer=ee.Reducer.mean(),
             geometry=region,
@@ -231,6 +239,7 @@ def get_soil_data(lat: float, lon: float) -> Dict[str, Any]:
 
     _ensure_initialized()
     region = _geometry(lat, lon, buffer_m=5000)
+    logger.info("GEE[soil]: querying SoilGrids for lat=%s lon=%s", lat, lon)
 
     ph_image = ee.Image(SOILGRIDS_PREFIX + "phh2o_mean").select("phh2o_0-5cm_mean").rename("ph")
     sand_image = ee.Image(SOILGRIDS_PREFIX + "sand_mean").select("sand_0-5cm_mean").rename("sand")
@@ -247,6 +256,7 @@ def get_soil_data(lat: float, lon: float) -> Dict[str, Any]:
     ).getInfo()
 
     ph_value = _safe_float(reduced.get("ph"), multiplier=0.1)
+    logger.info("GEE[soil]: got values ph=%s sand=%s clay=%s soc=%s", ph_value, reduced.get("sand"), reduced.get("clay"), reduced.get("soc"))
     sand_value = _safe_float(reduced.get("sand"))
     clay_value = _safe_float(reduced.get("clay"))
     soc_value = _safe_float(reduced.get("soc"))
@@ -271,6 +281,7 @@ def get_topography_data(lat: float, lon: float) -> Dict[str, Any]:
 
     _ensure_initialized()
     region = _geometry(lat, lon, buffer_m=1000)
+    logger.info("GEE[topo]: querying SRTM for lat=%s lon=%s", lat, lon)
 
     elevation = ee.Image(SRTM_ELEVATION)
     slope = ee.Terrain.slope(elevation)
@@ -283,6 +294,7 @@ def get_topography_data(lat: float, lon: float) -> Dict[str, Any]:
         bestEffort=True,
         maxPixels=1_000_000_000,
     ).getInfo()
+    logger.info("GEE[topo]: elevation=%s slope=%s", reduced.get("elevation"), reduced.get("slope"))
 
     return {
         "status": "ok",
@@ -313,6 +325,7 @@ def get_landcover_and_vegetation(lat: float, lon: float, date_str: str) -> Dict[
 
     _ensure_initialized()
     region = _geometry(lat, lon, buffer_m=2000)
+    logger.info("GEE[landcover]: querying Sentinel-2 + WorldCover for lat=%s lon=%s date=%s", lat, lon, date_str)
 
     analysis_end = ee.Date(date_str)
     analysis_start = analysis_end.advance(-30, "day")
@@ -325,7 +338,9 @@ def get_landcover_and_vegetation(lat: float, lon: float, date_str: str) -> Dict[
         .map(_prepare_sentinel2)
     )
 
-    if s2_collection.size().getInfo() == 0:
+    size = s2_collection.size().getInfo()
+    logger.info("GEE[landcover]: Sentinel-2 candidate images: %d", size)
+    if size == 0:
         raise ValueError("Tidak ada citra Sentinel-2 bersih di sekitar tanggal tersebut.")
 
     s2_image = s2_collection.median()
@@ -342,6 +357,7 @@ def get_landcover_and_vegetation(lat: float, lon: float, date_str: str) -> Dict[
 
     ndvi_value = _safe_float(stats.get("NDVI"))
     ndwi_value = _safe_float(stats.get("NDWI"))
+    logger.info("GEE[landcover]: NDVI=%s NDWI=%s", ndvi_value, ndwi_value)
 
     worldcover = ee.Image(ESA_WORLDCOVER_2021)
     cover_stats = worldcover.reduceRegion(
@@ -353,6 +369,7 @@ def get_landcover_and_vegetation(lat: float, lon: float, date_str: str) -> Dict[
     ).getInfo()
 
     landcover_code = cover_stats.get("Map")
+    logger.info("GEE[landcover]: worldcover code=%s", landcover_code)
 
     return {
         "status": "ok",
@@ -377,6 +394,7 @@ def get_seasonal_pattern(lat: float, lon: float) -> Dict[str, Any]:
 
     _ensure_initialized()
     region = _geometry(lat, lon, buffer_m=5000)
+    logger.info("GEE[seasonal]: querying TerraClimate long-term precip for lat=%s lon=%s", lat, lon)
 
     today = ee.Date(datetime.utcnow().strftime("%Y-%m-%d"))
     start = today.advance(-10, "year")
@@ -399,14 +417,17 @@ def get_seasonal_pattern(lat: float, lon: float) -> Dict[str, Any]:
         bestEffort=True,
         maxPixels=1_000_000_000,
     ).getInfo()
+    logger.info("GEE[seasonal]: mean long-term precip=%s", mean_stats.get("pr"))
 
     long_term_avg = _safe_float(mean_stats.get("pr"))
 
     monthly_totals: List[Dict[str, Any]] = []
     for month in range(1, 13):
         monthly_collection = collection.filter(ee.Filter.calendarRange(month, month, "month"))
-        if monthly_collection.size().getInfo() == 0:
+        msize = monthly_collection.size().getInfo()
+        if msize == 0:
             continue
+        logger.debug("GEE[seasonal]: month %d has %d images", month, msize)
         monthly_mean = monthly_collection.mean()
         monthly_stats = monthly_mean.reduceRegion(
             reducer=ee.Reducer.mean(),
@@ -425,6 +446,8 @@ def get_seasonal_pattern(lat: float, lon: float) -> Dict[str, Any]:
     valid_months = [m for m in monthly_totals if m["precip_mm"] is not None]
     wettest = max(valid_months, key=lambda item: item["precip_mm"]) if valid_months else None
     driest = min(valid_months, key=lambda item: item["precip_mm"]) if valid_months else None
+    if valid_months:
+        logger.info("GEE[seasonal]: wettest=%s driest=%s", wettest, driest)
 
     return {
         "status": "ok",
@@ -446,6 +469,7 @@ def get_nighttime_lights(lat: float, lon: float) -> Dict[str, Any]:
 
     _ensure_initialized()
     region = _geometry(lat, lon, buffer_m=2000)
+    logger.info("GEE[nighlights]: querying VIIRS for lat=%s lon=%s", lat, lon)
 
     end = ee.Date(datetime.utcnow().strftime("%Y-%m-%d"))
     start = end.advance(-3, "month")
@@ -468,6 +492,7 @@ def get_nighttime_lights(lat: float, lon: float) -> Dict[str, Any]:
         bestEffort=True,
         maxPixels=1_000_000_000,
     ).getInfo()
+    logger.info("GEE[nighlights]: radiance=%s", stats.get("avg_rad"))
 
     return {
         "status": "ok",

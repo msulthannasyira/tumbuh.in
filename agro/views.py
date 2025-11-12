@@ -8,6 +8,7 @@ import time
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, List, Tuple
+import logging
 
 from django.conf import settings
 from django.contrib.auth import login
@@ -37,6 +38,12 @@ try:  # Optional dependency guard for numpy values from APIs
 	import numpy as np
 except ImportError:  # pragma: no cover - numpy is in requirements but guard just in case
 	np = None
+
+# Module logger so messages appear in the terminal when Django is run
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+	# Ensure there is at least a console handler during development so INFO logs are visible
+	logging.basicConfig(level=logging.INFO)
 
 
 class TumbuhLoginView(LoginView):
@@ -618,28 +625,51 @@ def _collect_variables(area: Area, tile_geoms) -> List[Tile]:
 	valid_tiles = [tile_geom for tile_geom in tile_geoms if tile_geom.centroid[0] is not None and tile_geom.centroid[1] is not None]
 	if not valid_tiles:
 		return tiles
-
 	max_workers = getattr(settings, "GEE_MAX_WORKERS", 4)
 	max_workers = max(1, min(max_workers, len(valid_tiles)))
 
 	results = []
+	# Keep track of futures so we can log progress and duration per tile
 	with ThreadPoolExecutor(max_workers=max_workers) as executor:
 		futures = {}
+		starts: dict = {}
+
+		logger.info("Memulai pengumpulan variabel GEE untuk %d tile menggunakan %d worker(s)", len(valid_tiles), max_workers)
+
 		for tile_geom in valid_tiles:
 			lat, lon = tile_geom.centroid
-			futures[executor.submit(
+			future = executor.submit(
 				GEEVariableService.collect,
 				lat=lat,
 				lon=lon,
 				start_date=str(start),
 				end_date=str(today),
-			)] = tile_geom
+			)
+			futures[future] = tile_geom
+			starts[future] = time.perf_counter()
+			logger.debug("Submitted tile %d,%d (centroid=%.6f,%.6f)", tile_geom.row, tile_geom.col, lat, lon)
 
 		for future in as_completed(futures):
 			tile_geom = futures[future]
+			start_time = starts.pop(future, None)
 			try:
 				raw_variables = future.result()
+				duration = (time.perf_counter() - start_time) if start_time is not None else None
+				logger.info(
+					"Tile %d,%d collected%s",
+					tile_geom.row,
+					tile_geom.col,
+					f" in {duration:.2f}s" if duration is not None else "",
+				)
 			except Exception as exc:  # pragma: no cover - defensive
+				duration = (time.perf_counter() - start_time) if start_time is not None else None
+				logger.error(
+					"Tile %d,%d failed: %s%s",
+					tile_geom.row,
+					tile_geom.col,
+					str(exc),
+					f" (after {duration:.2f}s)" if duration is not None else "",
+				)
 				raw_variables = {"status": "error", "message": str(exc)}
 			results.append((tile_geom, _make_json_safe(raw_variables)))
 
@@ -655,6 +685,7 @@ def _collect_variables(area: Area, tile_geoms) -> List[Tile]:
 			variables=variables,
 			status=Tile.Status.COLLECTED,
 		)
+		logger.debug("Tile db created %s (%d,%d)", tile.id, tile.row_index, tile.col_index)
 		tiles.append(tile)
 	return tiles
 
