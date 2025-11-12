@@ -41,6 +41,10 @@ db.sqlite3
 # Environment
 .env
 .env.*
+serviceaccount.json
+service_account.json
+service-account.json
+serviceaccount.josn
 
 # Celery
 celerybeat-schedule
