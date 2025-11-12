@@ -4,6 +4,7 @@ import functools
 from typing import Dict, Optional
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from api_documentation import (
     get_climate_data,
@@ -23,20 +24,41 @@ class GEEVariableService:
         logger = logging.getLogger(__name__)
         logger.info("Mulai collect variables untuk centroid (lat=%.6f, lon=%.6f)", lat, lon)
 
-        climate = safe_call(get_climate_data, lat=lat, lon=lon, start_date=start_date, end_date=end_date)
-        soil = safe_call(get_soil_data, lat=lat, lon=lon)
-        topo = safe_call(get_topography_data, lat=lat, lon=lon)
-        landcover = safe_call(get_landcover_and_vegetation, lat=lat, lon=lon, date_str=end_date)
-        seasonal = safe_call(get_seasonal_pattern, lat=lat, lon=lon)
-        night = safe_call(get_nighttime_lights, lat=lat, lon=lon)
+        providers = {
+            "climate": (get_climate_data, {"lat": lat, "lon": lon, "start_date": start_date, "end_date": end_date}),
+            "soil": (get_soil_data, {"lat": lat, "lon": lon}),
+            "topography": (get_topography_data, {"lat": lat, "lon": lon}),
+            "landcover": (get_landcover_and_vegetation, {"lat": lat, "lon": lon, "date_str": end_date}),
+            "seasonal": (get_seasonal_pattern, {"lat": lat, "lon": lon}),
+            "nighttime": (get_nighttime_lights, {"lat": lat, "lon": lon}),
+        }
+
+        # Parallelize provider calls to reduce wall-clock time per tile.
+        max_workers = min(4, len(providers))
+        results: Dict[str, Dict] = {}
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_map = {}
+            for name, (func, kwargs) in providers.items():
+                future = executor.submit(safe_call, func, **kwargs)
+                future_map[future] = name
+                logger.debug("Submitted provider %s for centroid (lat=%.6f, lon=%.6f)", name, lat, lon)
+
+            for future in as_completed(future_map):
+                name = future_map[future]
+                try:
+                    value = future.result()
+                except Exception as exc:  # pragma: no cover - defensive
+                    logger.exception("Provider %s failed for centroid lat=%.6f lon=%.6f: %s", name, lat, lon, exc)
+                    value = {"status": "error", "message": str(exc)}
+                results[name] = value
 
         return {
-            "climate": climate,
-            "soil": soil,
-            "topography": topo,
-            "landcover": landcover,
-            "seasonal": seasonal,
-            "nighttime": night,
+            "climate": results.get("climate"),
+            "soil": results.get("soil"),
+            "topography": results.get("topography"),
+            "landcover": results.get("landcover"),
+            "seasonal": results.get("seasonal"),
+            "nighttime": results.get("nighttime"),
         }
 
 
