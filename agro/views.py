@@ -671,10 +671,16 @@ def _collect_variables(area: Area, tile_geoms) -> List[Tile]:
 					f" (after {duration:.2f}s)" if duration is not None else "",
 				)
 				raw_variables = {"status": "error", "message": str(exc)}
-			results.append((tile_geom, _make_json_safe(raw_variables)))
+			# Convert result to JSON-safe form and measure cost — this can be non-trivial for large responses
+			json_start = time.perf_counter()
+			json_safe = _make_json_safe(raw_variables)
+			json_dur = time.perf_counter() - json_start
+			logger.debug("_make_json_safe for tile %d,%d took %.3fs", tile_geom.row, tile_geom.col, json_dur)
+			results.append((tile_geom, json_safe))
 
 	for tile_geom, variables in sorted(results, key=lambda item: (item[0].row, item[0].col)):
 		lat, lon = tile_geom.centroid
+		create_start = time.perf_counter()
 		tile = Tile.objects.create(
 			area=area,
 			row_index=tile_geom.row,
@@ -685,7 +691,8 @@ def _collect_variables(area: Area, tile_geoms) -> List[Tile]:
 			variables=variables,
 			status=Tile.Status.COLLECTED,
 		)
-		logger.debug("Tile db created %s (%d,%d)", tile.id, tile.row_index, tile.col_index)
+		create_dur = time.perf_counter() - create_start
+		logger.debug("Tile db created %s (%d,%d) in %.3fs", tile.id, tile.row_index, tile.col_index, create_dur)
 		tiles.append(tile)
 	return tiles
 
